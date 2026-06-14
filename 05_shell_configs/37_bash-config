@@ -1,0 +1,298 @@
+# If not running interactively, don't do anything
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+
+# History (Bash)
+HISTCONTROL=ignoreboth
+shopt -s histappend
+HISTSIZE=5000
+HISTFILESIZE=10000
+
+# Window size check
+shopt -s checkwinsize
+
+# Color support
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    alias grep='grep --color=auto'
+fi
+
+# Bash completion
+if ! shopt -oq posix; then
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    . /usr/share/bash-completion/bash_completion
+  elif [ -f /etc/bash_completion ]; then
+    . /etc/bash_completion
+  fi
+fi
+
+# Prompt (Bash - simple)
+PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
+
+# Keybindings (Bash)
+set -o emacs
+bind '"\C-p":history-search-backward'
+bind '"\C-n":history-search-forward'
+
+# Integrations
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash
+eval "$(zoxide init bash)" >/dev/null 2>&1
+
+# PATH & Exports
+export PATH="$PATH:$HOME/.local/bin"
+export EDITOR="nano"
+
+# ==================== CARGAR CONFIG COMPARTIDA ====================
+source ~/.shell_common
+
+# ==================== ALIASES CUSTOMIZED (BASH COMPATIBLE) =========================
+
+# Pacman & Paru (Arch Linux) aliases:
+alias ins-pacman='sudo pacman -S' 
+alias ins-paru='paru -S'
+alias rmv-pacman='sudo pacman -Rnu'
+alias rmv-paru='paru -Rnu'
+alias upd-pacman='sudo pacman -Syyu'
+alias upd-paru='paru -Sua'
+
+# APT (Debian/Ubuntu) aliases:
+alias autorem-apt='sudo apt autoremove -y'
+alias ins-apt='sudo apt install -y'
+alias rmv-apt='sudo apt remove'
+alias upd-apt='sudo apt update && sudo apt dist-upgrade -y'
+
+# System aliases:
+alias bshrc='sudo nano ~/.bashrc'
+alias c='clear'
+alias grubcfg='sudo nano /etc/default/grub'
+alias ip='ip a'
+alias myip='curl ifconfig.me'
+alias poweroff='sudo poweroff'
+alias reboot='sudo reboot'
+alias show='exa -1 -l --icons 2>/dev/null || ls -1 -l'
+alias showh='exa -l -a --icons 2>/dev/null || ls -l -a'
+alias sourcelist-apt='sudo nano /etc/apt/sources.list'
+alias sourcelist-pacman='sudo nano /etc/pacman.conf'
+alias src='source'
+alias srcbsh='source ~/.bashrc'
+alias system-disable='sudo systemctl disable'
+alias system-down='sudo systemctl stop'
+alias system-enable='sudo systemctl enable'
+alias system-restart='sudo systemctl restart'
+alias system-start='sudo systemctl start'
+alias system-status='sudo systemctl status'
+alias system-suspend='sudo systemctl suspend'
+alias visudo='sudo visudo'
+
+# GRUB Updates
+alias refresh-grub-apt='sudo nano /etc/default/grub && sudo update-grub'
+alias refresh-grub-pacman='sudo nano /etc/default/grub && sudo grub-mkconfig -o /boot/grub/grub.cfg'
+
+# ---------------------- GIT ALIASES COMMANDS (BASH) ----------------------
+alias ga="git add"
+alias gaa="git add --all"
+alias gb="git branch"
+alias gba="git branch --all"
+alias gbd="git branch --delete"
+alias gbD="git branch --delete --force"
+alias gc="git commit --verbose"
+alias gcm="git commit -m"
+alias gca="git commit --verbose --all"
+alias gcam="git commit --all --message"
+alias gco="git checkout"
+alias gcb="git checkout -b"
+alias gcm-amne="git commit --amend --no-edit"
+alias gd="git diff"
+alias gds="git diff --staged"
+alias gf="git fetch"
+alias glg-g='git log --oneline --decorate --all --graph --pretty=format:"%C(bold blue)%h%C(reset) - %C(bold green)(%ar)%C(reset) %C(white)%s%C(reset) %C(dim white)- %an%C(reset)%C(bold yellow)%d%C(reset)"'
+alias glog="git log --oneline --all --decorate"
+alias gm="git merge"
+alias gpl="git pull"
+alias gpll="git pull"
+alias gplr="git pull --rebase"
+alias gps="git push"
+alias gpsf="git push --force-with-lease"
+alias 'gpsf!'="git push --force"
+alias gr="git remote"
+alias grba="git rebase --abort"
+alias grbc="git rebase --continue"
+alias grbi="git rebase --interactive"
+alias grh="git reset"
+alias grhh="git reset --hard"
+alias gst="git status"
+alias gss="git status --short"
+alias gsw="git switch"
+alias gswc="git switch --create"
+
+# ==================== FUNCTIONS CUSTOMS (BASH SYNTAX) =========================
+
+# Función maestra Git
+function useGit() {
+  local accion="$1"
+  local arg="$2"
+
+  if [[ -z "$accion" ]]; then
+    git status
+    return
+  fi
+
+  case "$accion" in
+    commit-up)
+      git add . && git commit -m "$arg" && git push
+      ;;
+    commit-sign)
+      git add . && git commit -S -m "$arg" && git push
+      ;;
+    fix)
+      git add . && git commit --amend --no-edit && git push --force-with-lease
+      ;;
+    update)
+      git pull && git status
+      ;;
+    view)
+      git status && git log --oneline --decorate --all -n 5
+      ;;
+    undo)
+      git reset HEAD~1 && git status
+      ;;
+    *)
+      git "$@"
+      ;;
+  esac
+}
+
+# Función Verificar Hash
+function useVerify() {
+    local file="$HOME/Descargas/$1"
+    local user_input="${2:-}"
+    local user_algo="${3:-}"
+
+    if [ ! -f "$file" ]; then
+        echo "❌ Error: El archivo '$1' no existe en ~/Descargas"
+        return 1
+    fi
+
+    local algo="sha256"
+    local compare_hash=""
+
+    case "$user_input" in
+        sha1|sha256|sha512|md5)
+            algo="$user_input"
+            ;;
+        *)
+            compare_hash="$user_input"
+            ;;
+    esac
+
+    if [ -n "$user_algo" ]; then
+        algo="$user_algo"
+    fi
+
+    local cmd
+    case "$algo" in
+        sha1)   cmd="sha1sum" ;;
+        sha256) cmd="sha256sum" ;;
+        sha512) cmd="sha512sum" ;;
+        md5)    cmd="md5sum" ;;
+        *)      echo "⚠️ Algoritmo no soportado: $algo"; return 1 ;;
+    esac
+
+    local calculated
+    calculated=$($cmd "$file" | awk '{print $1}')
+
+    if [ -n "$compare_hash" ]; then
+        if [ "$calculated" = "$compare_hash" ]; then
+            echo "✅ VERIFICACIÓN EXITOSA ($algo)"
+        else
+            echo "❌ ERROR: Los hashes NO coinciden ($algo)"
+            echo "Esperado:  $compare_hash"
+            echo "Calculado: $calculated"
+        fi
+    else
+        echo "🔎 Archivo: $file"
+        echo "Algoritmo:  $algo"
+        echo "Hash:       $calculated"
+    fi
+}
+
+# Función Generador de Contraseñas
+function usePWGEN() {
+    local cantidad=${1:-1}
+    
+    if [[ ! "$cantidad" =~ ^[0-9]+$ ]] || [[ "$cantidad" -lt 1 ]]; then
+        echo "Uso: usePWGEN [cantidad]"
+        return 1
+    fi
+
+    local count=0
+    while (( count < cantidad )); do
+        local num=$(printf "%04d" $((RANDOM % 10000)))
+        local let=$(LC_ALL=C tr -dc 'A-Z' </dev/urandom | head -c 3)
+        echo "${num} ${let}"
+        ((count++))
+    done
+}
+
+# Función Descarga Media (yt-dlp)
+function useMediaDownload() {
+    local url=""
+    local carpeta=""
+    local args=()
+    local cookie_file="$HOME/.config/yt-dlp/cookies.txt"
+
+    if ! command -v yt-dlp &>/dev/null; then
+        echo "❌ Error: 'yt-dlp' no está instalado."
+        return 1
+    fi
+
+    local modo="video_local"
+
+    if [[ "$1" =~ ^- ]]; then
+        modo="$1"
+        shift
+    fi
+
+    if [[ -z "$1" ]]; then
+        echo "Uso: media [opcion] [url] [carpeta_destino]"
+        return 1
+    fi
+    
+    url="$1"
+    if [[ -n "$2" ]]; then carpeta="$2"; fi
+
+    case "$modo" in
+        -m|--music)
+            if [[ -z "$carpeta" ]]; then carpeta="$HOME/Música"; fi
+            args+=(-x --audio-format mp3 --audio-quality 0 --embed-thumbnail --add-metadata)
+            echo "🎵 Modo: Música (MP3)"
+            ;;
+        -v|--video)
+            if [[ -z "$carpeta" ]]; then carpeta="$HOME/Videos"; fi
+            args+=(--merge-output-format mp4 --embed-thumbnail --add-metadata)
+            echo "🎬 Modo: Video"
+            ;;
+        *)
+            if [[ -z "$carpeta" ]]; then carpeta="$(pwd)"; fi
+            args+=(--merge-output-format mp4)
+            echo "📁 Modo: Video (Carpeta actual)"
+            ;;
+    esac
+
+    mkdir -p "$carpeta"
+    echo "📂 Destino: $carpeta"
+    echo "⏳ Actualizando yt-dlp..."
+    yt-dlp -U &>/dev/null
+
+    local cmd="yt-dlp ${args[*]} -o \"$carpeta/%(title)s.%(ext)s\" \"$url\""
+    eval "$cmd"
+}
+
+# Alias para llamar a las funciones fácilmente (compatible con tu memoria muscular)
+alias onGit="useGit"
+alias onVerifyHash="useVerify"
+alias onPWGEN="usePWGEN"
+alias onMedia="useMediaDownload"

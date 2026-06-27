@@ -23,6 +23,14 @@ export C_RESET='\e[0m'
 
 # Scaffold a new modern web project (supporting Vite, Astro, Next.js, etc.) with a chosen package manager.
 # Offers interactive menu options using 'gum' when no arguments are provided, otherwise falls back to standard prompts.
+#
+# Arguments:
+#   $1 - framework: The web framework to use (vite/astro/next/react/vue/svelte)
+#   $2 - project_name: Name of the project folder
+#   $3 - package_manager: The package manager to use (bun/pnpm/npm/yarn)
+#
+# Return:
+#   0 on success, 1 on validation or execution failure
 function create-web() {
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Usage: create-web [framework] [project_name] [package_manager]%f\n"
@@ -39,19 +47,29 @@ function create-web() {
         [[ -z "$fw" ]] && fw=$(gum choose "vite" "astro" "next" "react" "vue" "svelte" --header "Select a framework:")
         [[ -z "$proj" ]] && proj=$(gum input --placeholder "e.g., my-awesome-app" --prompt "Project name: ")
         [[ -z "$pm" ]] && pm=$(gum choose "bun" "pnpm" "npm" "yarn" --header "Select a package manager:")
+    else
+        # Fallback to standard command-line prompts when gum is not available
+        if [[ -z "$fw" ]]; then
+            print -n "🛠️ Select a framework (vite/astro/next/react/vue/svelte): "
+            read -r fw
+            [[ -z "$fw" ]] && { print -P "%F{red}❌ Scaffolding cancelled.%f"; return 1; }
+        fi
+        if [[ -z "$proj" ]]; then
+            print -n "🎯 Project name: "
+            read -r proj
+            [[ -z "$proj" ]] && { print -P "%F{red}❌ Scaffolding cancelled.%f"; return 1; }
+        fi
+        if [[ -z "$pm" ]]; then
+            print -n "📦 Package manager (bun/pnpm/npm/yarn) [default: bun]: "
+            read -r pm
+            pm=${pm:-bun}
+        fi
     fi
 
     # Validate framework input
     if [[ ! "$fw" =~ ^(vite|v|astro|a|next|n|nextjs|react|r|vue|svelte|s)$ ]]; then
         print -P "%F{red}❌ Invalid framework. Use 'create-web -h' for help.%f"
         return 1
-    fi
-
-    # Validate project name input
-    if [[ -z "$proj" ]]; then
-        print -n "🎯 Project name: "
-        read -r proj
-        [[ -z "$proj" ]] && { print -P "%F{red}❌ Scaffolding cancelled.%f"; return 1; }
     fi
 
     # Prevent overwriting an existing directory
@@ -63,9 +81,8 @@ function create-web() {
 
     # Validate package manager input
     if [[ ! "$pm" =~ ^(npm|yarn|pnpm|bun)$ ]]; then
-        print -n "📦 Package manager (npm/yarn/pnpm/bun) [default: bun]: "
-        read -r pm
-        pm=${pm:-bun}
+        print -P "%F{red}❌ Error: Package manager must be bun, pnpm, npm, or yarn.%f"
+        return 1
     fi
 
     # Verify that the package manager is installed on the system
@@ -110,7 +127,13 @@ function create-web() {
 # ==============================================================================
 
 # Interactively select a running Docker container and open a shell session inside it.
-# Supports fzf and gum for container selection, and defaults to bash.
+# If arguments are passed, it runs docker exec directly with those arguments.
+#
+# Arguments:
+#   $@ - Optional direct pass-through arguments to 'docker exec -it'
+#
+# Return:
+#   Status code of docker exec or 1 if container selection fails.
 function dexec() {
     if [[ $# -gt 0 ]]; then
         docker exec -it "$@"
@@ -137,8 +160,14 @@ function dexec() {
     docker exec -it "$container" "$shell" || docker exec -it "$container" sh
 }
 
-# Interactively select a Docker container (running or stopped) and track/follow its logs.
-# Requires fzf or gum for container selection.
+# Interactively select a Docker container (running or stopped) and tail/follow its logs.
+# If arguments are passed, it runs docker logs directly with those arguments.
+#
+# Arguments:
+#   $@ - Optional direct pass-through arguments to 'docker logs'
+#
+# Return:
+#   Status code of docker logs or 1 on failure.
 function dlog() {
     if [[ $# -gt 0 ]]; then
         docker logs "$@"
@@ -160,6 +189,10 @@ function dlog() {
 }
 
 # Safe interactive wizard to prune stopped containers, dangling images, unused volumes, and networks.
+# Asks for confirmation before performing clean up.
+#
+# Return:
+#   0 on success
 function dclean() {
     print -P "%F{yellow}🧹 Docker Cleanup Wizard%f"
     if command -v gum &>/dev/null; then
@@ -176,6 +209,9 @@ function dclean() {
 }
 
 # Display IP addresses and port mappings of all running Docker containers in a compact table.
+#
+# Return:
+#   0 on success
 function dip() {
     local format_str='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
     docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}" | while read -r line; do
@@ -196,34 +232,57 @@ function dip() {
 # 📦 DEVELOPMENT UTILITIES
 # ==============================================================================
 
-# Identify and terminate the process holding/listening on a specified local network port.
-# Prompts for verification before killing the process.
+# Identify and terminate the process(es) holding/listening on a specified local network port.
+# Prompts for verification before killing the process(es). Handles multiple PIDs cleanly.
+#
+# Arguments:
+#   $1 - port: Port number (required, e.g., 8080)
+#
+# Return:
+#   0 on success, 1 on missing argument or execution failure
 function killport() {
     local port="$1"
     if [[ -z "$port" ]]; then
         print -P "%F{red}❌ Error: Port number is required (e.g., killport 8080).%f"
         return 1
     fi
-    local pid=$(lsof -t -i:"$port" 2>/dev/null)
-    if [[ -z "$pid" ]]; then
+    
+    local pid_output=$(lsof -t -i:"$port" 2>/dev/null)
+    if [[ -z "$pid_output" ]]; then
         print -P "%F{yellow}⚠️ No process found listening on port $port.%f"
         return 0
     fi
-    print -P "%F{cyan}Process %F{yellow}$pid%f ($(ps -p "$pid" -o comm=)) is listening on port $port.%f"
+    
+    # Split PIDs into a Zsh array
+    local -a pids
+    pids=(${(f)pid_output})
+    
+    print -P "%F{cyan}Processes listening on port $port:%f"
+    for pid in "${pids[@]}"; do
+        local comm=$(ps -p "$pid" -o comm= 2>/dev/null)
+        print -P "  - PID: %F{yellow}$pid%f ($comm)"
+    done
+    
     if command -v gum &>/dev/null; then
-        gum confirm "Kill this process?" && kill -9 "$pid"
+        gum confirm "Kill these processes?" && kill -9 "${pids[@]}"
     else
-        print -n "Kill this process? (y/N): "
+        print -n "Kill these processes? (y/N): "
         read -r response
         if [[ "$response" =~ ^[yY]$ ]]; then
-            kill -9 "$pid"
-            print -P "%F{green}Process terminated.%f"
+            kill -9 "${pids[@]}"
+            print -P "%F{green}Processes terminated successfully.%f"
         fi
     fi
 }
 
 # Automatically extract common archive formats based on their file extension.
 # Supports tar, gz, bz2, zip, rar, 7z, and more.
+#
+# Arguments:
+#   $1 - file: Path to the archive file (required)
+#
+# Return:
+#   0 on success, 1 if file is missing or compression format is unsupported
 function extract() {
     if [[ -z "$1" ]]; then
         print -P "%F{red}❌ Error: File name required (e.g., extract archive.tar.gz).%f"
@@ -248,15 +307,25 @@ function extract() {
     esac
 }
 
-# Delete all local branches that have already been merged into the default remote branch.
-# Synchronizes with origin before checking for merged branches.
+# Delete all local branches that have already been merged into the default branch.
+# Synchronizes with origin before checking for merged branches. Optimizes default branch lookup.
+#
+# Return:
+#   0 on success, 1 if run outside a Git repo or if checkout/pull fails
 function git-prune-branches() {
     if ! git rev-parse --is-inside-work-tree &>/dev/null; then
         print -P "%F{red}❌ Error: Not a Git repository.%f"
         return 1
     fi
-    local default_branch=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+    
+    # Fast local detection of remote default branch tracking
+    local default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+    if [[ -z "$default_branch" ]]; then
+        # Fallback to slow remote query if local tracking is missing
+        default_branch=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | cut -d' ' -f5)
+    fi
     default_branch="${default_branch:-main}"
+    
     print -P "Checking merged branches against %F{cyan}$default_branch%f..."
     git checkout "$default_branch" && git pull origin "$default_branch" && git fetch -p || return 1
     
@@ -285,6 +354,14 @@ function git-prune-branches() {
 
 # Download media (video, audio/music, or playlist) from YouTube/supported sites using yt-dlp.
 # Automatically sets up optimized encoders, embeds metadata, and creates directories.
+#
+# Arguments:
+#   $1 - mode: Media mode (video/v, music/m/audio/a, playlist/p)
+#   $2 - url: URL of the media file (required)
+#   $3 - destination_dir: Optional custom download folder
+#
+# Return:
+#   0 on success, 1 on error
 function download() {
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Usage: download <video|music|playlist> <url> [destination_dir]%f\n"
@@ -338,8 +415,17 @@ function download() {
 # 📦 FILE INTEGRITY VERIFICATION
 # ==============================================================================
 
-# Calculate or verify file integrity checksums (supporting sha256, md5, sha1, etc.).
+# Calculate or verify file integrity checksums (supporting sha256, md5, sha1, sha512).
 # Performs case-insensitive matching when comparing against expected hash results.
+#
+# Arguments:
+#   $1 - action: calc/calculate/c or comp/compare
+#   $2 - file: Path to the target file
+#   $3 - expected: Expected hash (required for compare action)
+#   $4 - algorithm: Optional hashing algorithm (default: sha256)
+#
+# Return:
+#   0 on success or match, 1 on mismatch or validation error
 function verifyhash() {
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Usage: verifyhash calc <file> [algorithm]%f"
@@ -396,6 +482,9 @@ function verifyhash() {
 
 # Internal helper to auto-detect the current Git branch namespace type.
 # Maps features, hotfixes, and documentation branches to semantic commit prefixes.
+#
+# Return:
+#   Semantic commit prefix (feat, fix, docs) or empty string
 function _git_branch_type() {
     local b=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
     case "$b" in 
@@ -408,6 +497,15 @@ function _git_branch_type() {
 
 # Automate repository workflows: stages files, commits with context headers, merges branches, and pushes to remote origin.
 # Fully interactive with gum inputs if installed for commit messaging.
+#
+# Arguments:
+#   -a: Run 'git add .' to stage all changes
+#   -p: Run 'git push' to upload the commits to current remote branch
+#   -d <branch>: Merge current branch into <branch>, push, and switch back
+#   "message": The commit message
+#
+# Return:
+#   0 on success, 1 on error
 function git-magic() {
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Usage: git-magic [-a] [-p] [-d <branch>] \"message\"%f"
@@ -484,6 +582,13 @@ function git-magic() {
 
 # Manage QEMU virtual machines (creates virtual disk files, handles ISO mounting, and controls execution parameters).
 # Automatically checks for hardware virtualization (KVM) access and applies system optimization arguments.
+#
+# Arguments:
+#   $1 - action: create/run/full
+#   Options depending on action (run 'vm -h' for details)
+#
+# Return:
+#   0 on success, 1 on error
 function vm() {
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Usage: vm <create|run|full> [options]%f"
@@ -571,6 +676,13 @@ function vm() {
 
 # Unified system package manager wrapper for Arch Linux using yay.
 # Simplifies installation, removal, update, cleanup, and keys re-initialization.
+#
+# Arguments:
+#   $1 - action: i/install, r/remove, u/update, c/clean, k/keys, conf
+#   $@ - Additional arguments to package manager
+#
+# Return:
+#   0 on success, 1 on error
 function pkg() {
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Usage: pkg <i|r|u|c|k|conf> [package_name]%f"
@@ -628,6 +740,13 @@ function pkg() {
 
 # Unified package manager wrapper for Debian/Ubuntu systems using nala (fallback to apt).
 # Simplifies installation, removal, update, cleanup, and repository searching.
+#
+# Arguments:
+#   $1 - action: i/install, r/remove, u/update, c/clean, s/search
+#   $@ - Additional arguments to package manager
+#
+# Return:
+#   0 on success, 1 on error
 function pkg-deb() {
     if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Usage: pkg-deb <i|r|u|c|s> [package_name]%f"
@@ -689,7 +808,14 @@ function pkg-deb() {
 # ==============================================================================
 
 # Retrieve and format system information metrics, user sessions, network interfaces, disk space, and hardware specs.
-# Can display individual metrics or all details concurrently.
+# Can display individual metrics or all details concurrently. Shows help by default when no arguments are provided.
+#
+# Arguments:
+#   $1 - option: -u/--user, -k/--kernel, -n/--net, -d/--disk, -hw/--hardware,
+#                -s/--software, -x/--status, -f/--fetch, -a/--all
+#
+# Return:
+#   0 on success, 1 on invalid option
 function sysinfo() {
     if [[ -z "$1" || "$1" == "-h" || "$1" == "--help" ]]; then 
         print -P "%F{cyan}Uso: sysinfo [opciones]%f"
@@ -808,6 +934,10 @@ function sysinfo() {
 # ==============================================================================
 
 # Print a beautiful directory listing details and usage tips for all available custom Dojo helper shell functions.
+# Uses 'gum' formatting when available for enhanced visuals.
+#
+# Return:
+#   0 on success
 function zfuncs() {
     if command -v gum &>/dev/null; then
         gum style --border double --border-foreground 57 --foreground 212 \
@@ -834,6 +964,25 @@ function zfuncs() {
 }
 
 
+# ==============================================================================
+# 📦 PASSWORD GENERATION UTILITY
+# ==============================================================================
+
+# Generates cryptographically secure random passwords of various types.
+# Similar to the python 'pgen' daemon but implemented directly inside shell scripts.
+#
+# Arguments:
+#   -S: Generate secure password (default)
+#   -M: Generate Spanish license-plate-style password (4 digits + 3 consonants)
+#   -A: Generate alphanumeric password
+#   -N: Generate numeric PIN/password
+#   -X: Generate memorable xkcd-style password (hyphen separated words)
+#   $1 - Optional password length (defaults to 16, or 6 for numeric)
+#   $2 - Optional number of passwords to generate (default: 1)
+#   $3 - Optional word/block count (for memorable/license plate passwords; default: 4 words, 1 block)
+#
+# Return:
+#   0 on success, 1 on invalid argument
 function passgen() {
     local -a FW=("agua" "arbol" "arena" "barco" "brisa" "cielo" "cueva" "disco" "duna" "fuego" "gato" "globo" "hoja" "humo" "isla" "lago" "lluvia" "luna" "mapa" "monte" "nieve" "nube" "onda" "papel" "piedra" "pino" "pluma" "rayo" "rio" "roca" "selva" "sol" "suelo" "tierra" "torre" "viento" "vuelo" "valle" "verde" "vida" "azul" "rojo" "claro" "oscuro" "fuerte" "suave" "rapido" "lento" "alto" "bajo" "acid" "apex" "atom" "bark" "beam" "bolt" "brisk" "calm" "clay" "coal" "dawn" "deep" "dusk" "echo" "fade" "flow" "flux" "glen" "glow" "halo" "haze" "iron" "jade" "lava" "leaf" "lime" "mist" "neon" "nova" "opal" "path" "pure" "rain" "reef" "rift" "rust" "sand" "shadow" "silk" "silt" "snow" "star" "surf" "tide" "vale" "vast" "wave" "wild" "wind" "zinc")
     local t="secure" l="" c="" q=""
@@ -842,12 +991,13 @@ function passgen() {
         case "$1" in
             -S) t="secure";; -M) t="matricula";; -A) t="alphanumeric";;
             -N) t="numeric";; -X) t="memorable";;
-            -h) echo "Uso: pgen [longitud] [cantidad] [qty] [-S|-M|-A|-N|-X|-h]"; return 0;;
+            -h) echo "Uso: passgen [longitud] [cantidad] [qty] [-S|-M|-A|-N|-X|-h]"; return 0;;
             -*) echo "Flag inválido: $1" >&2; return 1;;
             *) [[ -z "$l" ]] && l="$1" || { [[ -z "$c" ]] && c="$1" || q="$1"; };;
         esac; shift
     done
 
+    # Set default values if parameters were not supplied
     [[ -z "$l" ]] && l=$(( t == "numeric" ? 6 : 16 ))
     [[ -z "$c" ]] && c=1
     [[ -z "$q" ]] && q=$(( t == "memorable" ? 4 : 1 ))

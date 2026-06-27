@@ -691,17 +691,17 @@ function pkg-deb() {
 # Retrieve and format system information metrics, user sessions, network interfaces, disk space, and hardware specs.
 # Can display individual metrics or all details concurrently.
 function sysinfo() {
-    if [[ "$1" == "-h" || "$1" == "--help" ]]; then 
-        print -P "%F{cyan}Usage: sysinfo [options]%f"
-        print "  -u  : User attributes and login details"
-        print "  -k  : OS release version, hostname, and kernel release"
-        print "  -n  : Current network interfaces and IP addresses"
-        print "  -d  : Disk layout size and mountpoints"
-        print "  -hw : CPU model, total RAM, and GPU specs"
-        print "  -s  : Software metrics and package manager details"
-        print "  -x  : Memory diagnostics and failed systemd services"
-        print "  -f  : System specification summary (via fastfetch)"
-        print "  -a  : Run and output all metrics concurrently"
+    if [[ -z "$1" || "$1" == "-h" || "$1" == "--help" ]]; then 
+        print -P "%F{cyan}Uso: sysinfo [opciones]%f"
+        print "  -u, --user     : Detalles de usuario y grupos"
+        print "  -k, --kernel   : Versión de OS, hostname y kernel"
+        print "  -n, --net      : Interfaces de red y direcciones IP"
+        print "  -d, --disk     : Layout de discos y puntos de montaje"
+        print "  -hw, --hardware: CPU, memoria RAM total y tarjeta gráfica (GPU)"
+        print "  -s, --software : Total de paquetes instalados (pacman/flatpak)"
+        print "  -x, --status   : RAM en uso y servicios de systemd fallidos"
+        print "  -f, --fetch    : Resumen del sistema (vía fastfetch)"
+        print "  -a, --all      : Ejecutar y mostrar todas las métricas juntas"
         return 0
     fi
 
@@ -720,20 +720,20 @@ function sysinfo() {
     }
 
     case "$1" in
-        -u) 
+        -u|--user) 
             _p_h "USUARIO" "ATRIBUTO" "VALOR"
             _p_r "Usuario" "$(whoami)"
             _p_r "Grupos" "$(id -Gn | tr ' ' ', ')"
             _p_f 
             ;;
-        -k) 
+        -k|--kernel) 
             _p_h "SISTEMA" "COMPONENTE" "DETALLE"
             _p_r "Hostname" "$(hostname)"
             _p_r "Distribución" "$(grep '^PRETTY_NAME=' /etc/os-release | cut -d '"' -f2 2>/dev/null || echo 'Unknown')"
             _p_r "Kernel" "$(uname -r)"
             _p_f 
             ;;
-        -n) 
+        -n|--net) 
             _p_h "RED" "INTERFAZ" "ESTADO / IP"
             if command -v ip &>/dev/null; then
                 ip -br addr show | grep -vE "^(lo|tailscale|docker|veth|br-)" | while read -r i s ip; do 
@@ -744,7 +744,7 @@ function sysinfo() {
             fi
             _p_f 
             ;;
-        -d) 
+        -d|--disk) 
             _p_h "DISCOS" "PARTICIÓN" "TAMAÑO | FORMATO | MONTAJE"
             if command -v lsblk &>/dev/null; then
                 lsblk -p -o NAME,SIZE,FSTYPE,MOUNTPOINT -n -r | grep -v "loop" | while read -r n s f m; do 
@@ -755,26 +755,26 @@ function sysinfo() {
             fi
             _p_f 
             ;;
-        -hw) 
+        -hw|--hardware) 
             _p_h "HARDWARE" "COMPONENTE" "ESPECIFICACIÓN"
             _p_r "CPU" "$(grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2 | xargs 2>/dev/null || echo 'Unknown')"
             _p_r "RAM" "$(free -h | awk '/^Mem:/ {print $2}' 2>/dev/null || echo 'Unknown')"
             _p_r "GPU" "$(lspci 2>/dev/null | grep -i 'vga\|3d\|display' | head -1 | cut -d: -f3 | xargs || echo 'Not detected')"
             _p_f 
             ;;
-        -s) 
+        -s|--software) 
             _p_h "SOFTWARE" "GESTOR" "ESTADO"
             _p_r "Pacman" "$(pacman -Qq 2>/dev/null | wc -l 2>/dev/null || echo '0') packages"
             command -v flatpak &>/dev/null && _p_r "Flatpak" "$(flatpak list --app 2>/dev/null | wc -l) apps"
             _p_f 
             ;;
-        -x) 
+        -x|--status) 
             _p_h "SALUD" "MÉTRICA" "VALOR"
             _p_r "RAM Usada" "$(free -h | awk '/^Mem:/ {print $3 " / " $2}' 2>/dev/null || echo 'Unknown')"
             _p_r "Servicios Fallidos" "$(systemctl --failed --no-legend | wc -w 2>/dev/null || echo '0')"
             _p_f 
             ;;
-        -f) 
+        -f|--fetch) 
             _p_h "RESUMEN" "MÉTRICA" "VALOR"
             if command -v fastfetch &>/dev/null; then
                 fastfetch --logo none -s OS:Host:Kernel:Uptime:Packages:Shell:CPU:GPU:Memory:Disk 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | while IFS=':' read -r k v; do 
@@ -785,7 +785,7 @@ function sysinfo() {
             fi
             _p_f 
             ;;
-        -a) 
+        -a|--all) 
             sysinfo -u
             sysinfo -k
             sysinfo -f
@@ -796,7 +796,7 @@ function sysinfo() {
             sysinfo -x 
             ;;
         *) 
-            print -P "%F{red}❌ Error: Invalid option. Use 'sysinfo -h' for details.%f"
+            print -P "%F{red}❌ Error: Opción no válida. Usa 'sysinfo -h' para más detalles.%f"
             return 1
             ;;
     esac

@@ -322,14 +322,14 @@ function git-prune-branches() {
     local default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
     if [[ -z "$default_branch" ]]; then
         # Fallback to slow remote query if local tracking is missing
-        default_branch=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | cut -d' ' -f5)
+        default_branch=$(git remote show origin 2>/dev/null | command grep 'HEAD branch' | cut -d' ' -f5)
     fi
     default_branch="${default_branch:-main}"
     
     print -P "Checking merged branches against %F{cyan}$default_branch%f..."
     git checkout "$default_branch" && git pull origin "$default_branch" && git fetch -p || return 1
     
-    local branches=$(git branch --merged | grep -v "^\*" | grep -v "$default_branch")
+    local branches=$(git branch --merged | command grep -v "^\*" | command grep -v "$default_branch")
     if [[ -z "$branches" ]]; then
         print -P "%F{green}✨ No merged local branches to prune.%f"
         return 0
@@ -855,14 +855,14 @@ function sysinfo() {
         -k|--kernel) 
             _p_h "SISTEMA" "COMPONENTE" "DETALLE"
             _p_r "Hostname" "$(hostname)"
-            _p_r "Distribución" "$(grep '^PRETTY_NAME=' /etc/os-release | cut -d '"' -f2 2>/dev/null || echo 'Unknown')"
+            _p_r "Distribución" "$(command grep '^PRETTY_NAME=' /etc/os-release | cut -d '"' -f2 2>/dev/null || echo 'Unknown')"
             _p_r "Kernel" "$(uname -r)"
             _p_f 
             ;;
         -n|--net) 
             _p_h "RED" "INTERFAZ" "ESTADO / IP"
             if command -v ip &>/dev/null; then
-                ip -br addr show | grep -vE "^(lo|tailscale|docker|veth|br-)" | while read -r i s ip; do 
+                ip -br addr show | command grep -vE "^(lo|tailscale|docker|veth|br-)" | while read -r i s ip; do 
                     _p_r "$i" "$s | $ip"
                 done
             else
@@ -873,7 +873,7 @@ function sysinfo() {
         -d|--disk) 
             _p_h "DISCOS" "PARTICIÓN" "TAMAÑO | FORMATO | MONTAJE"
             if command -v lsblk &>/dev/null; then
-                lsblk -p -o NAME,SIZE,FSTYPE,MOUNTPOINT -n -r | grep -v "loop" | while read -r n s f m; do 
+                lsblk -p -o NAME,SIZE,FSTYPE,MOUNTPOINT -n -r | command grep -v "loop" | while read -r n s f m; do 
                     _p_r "$n" "$s | ${f:--} | ${m:--}"
                 done
             else
@@ -883,9 +883,9 @@ function sysinfo() {
             ;;
         -hw|--hardware) 
             _p_h "HARDWARE" "COMPONENTE" "ESPECIFICACIÓN"
-            _p_r "CPU" "$(grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2 | xargs 2>/dev/null || echo 'Unknown')"
+            _p_r "CPU" "$(command grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2 | xargs 2>/dev/null || echo 'Unknown')"
             _p_r "RAM" "$(free -h | awk '/^Mem:/ {print $2}' 2>/dev/null || echo 'Unknown')"
-            _p_r "GPU" "$(lspci 2>/dev/null | grep -i 'vga\|3d\|display' | head -1 | cut -d: -f3 | xargs || echo 'Not detected')"
+            _p_r "GPU" "$(lspci 2>/dev/null | command grep -i 'vga\|3d\|display' | head -1 | cut -d: -f3 | xargs || echo 'Not detected')"
             _p_f 
             ;;
         -s|--software) 
